@@ -16,12 +16,20 @@
 var term;
 const MODE_AUX = 0;
 const MODE_MIDI_MONITOR = 1;
-const MODE_MIDI_RUNTIME = 2;
-var CURRENT_MODE = MODE_MIDI_MONITOR;
+const MODE_AUX_CONSOLE = 2;
+const MODE_MIDI_RUNTIME = 3;
+const MODE_RAW = 4;
+var CURRENT_MODE = MODE_RAW;
 //var CURRENT_MODE = MODE_AUX;
 const help = [];
 const user_mode = [];
-user_mode.push("<?php echo $usermode;?>" , "SERIAL_MODE_MIDI_MONITOR", "SERIAL_MODE_MIDI_RUNTIME");
+user_mode.push(
+ "<?php echo $usermode;?>" ,
+ "SERIAL_MODE_MIDI_MONITOR",
+ "SERIAL_MODE_AUX_CONSOLE",
+ "SERIAL_MODE_MIDI_RUNTIME",
+ "SERIAL_MODE_RAW"
+);
 //the following lines of code demonstrate how to receive AUX: serial data from the Amiga
 //formatted in a compact way
 let out_buffer="";
@@ -30,7 +38,7 @@ window.addEventListener('message', event => {
 if(event.data.msg == 'serial_port_out')
 {
  switch (CURRENT_MODE) {
- case MODE_AUX:
+ case MODE_AUX, MODE_AUX_CONSOLE:
   let byte_from_amiga=event.data.value;
   out_buffer+=String.fromCharCode( byte_from_amiga & 0xff );
   switch (byte_from_amiga &0xff){
@@ -44,8 +52,15 @@ if(event.data.msg == 'serial_port_out')
    //term.echo(out_buffer, {newline: false});
    out_buffer="";
   }
+  if (out_buffer.includes("Process ")==true){
+   if (out_buffer.includes(" ending")==true){
+    term.set_prompt("> ");
+    //term.echo(out_buffer, {newline: false});
+    out_buffer="";
+   }
+  }
   break;
- case MODE_MIDI_MONITOR:
+ case MODE_MIDI_MONITOR, MODE_RAW:
   let midi_byte_from_amiga=event.data.value & 0xff ;
   switch ( midi_byte_from_amiga ){
   case 0xF8: break; //filter midiclocks
@@ -62,7 +77,7 @@ if(event.data.msg == 'serial_port_out')
   }
 //  term.echo(performance.now()+": "+ midi_byte_from_amiga.toString(16));
   break;
- } 
+ }
 }
 });
 </script>
@@ -102,7 +117,7 @@ case 1:
  if (cmd == 'help') { term.echo("Available commands:\n alias, assign, cls, echo, exit, help, loadwb, prompt,\n clear, click, close, engage, logout, mode\n ftp(dummy)"); }
  else if (cmd == 'cls') { term.clear(); term.echo("AmiGoDOS - Developer Shell [" + user_mode[CURRENT_MODE] + "]"); }
  else if (cmd == 'alias'){ term.echo("WIP: make short version of long commands/args"); }
- else if (cmd == 'assign'){ term.echo("WIP: assign f.e. 0xFA midi byte to trigger function in the webpage"); }
+ else if (cmd == 'assign'){ term.echo("WIP: assign i.e. 0xFA midi byte to trigger function in the webpage"); }
  else if (cmd == 'prompt'){ term.echo("<?php echo "$prompt";?>"); }
  else if (cmd == 'about1'){ term.echo("AmiGoDOS dialect is my amiga-ish syntax flavoured devshell originated in Delphi7 Pascal in 2002..");}
  else if (cmd == 'about2'){ term.echo("tried to keep the AmigaDOS syntax somehow alive.. to get things done on MS side.. even in Amiga GUI style");}
@@ -147,7 +162,7 @@ default:
    width: 960,
    height: 440,
    greetings: "AmiGoDOS - Developer Shell [" + user_mode[CURRENT_MODE] + "]",
-   prompt: "",  // we get the prompt from the amiga aux console
+   prompt: "> ",  // we get the prompt from the amiga aux console
    onBlur: function() { // prevent loosing focus
 return false;
    }
@@ -173,8 +188,8 @@ navbar:false,   //you can also enable this and disable the players toolbar (see 
 wide:true,
 border:20.20,
 port2:false,
-url:'./adf/Music-X_v2.0.zip',
-kickstart_rom_url:'./roms/kick2.rom'
+//url:'./adf/serialdebug.zip',
+kickstart_rom_url:'./roms/kick31.rom'
 };
 vAmigaWeb_player.load(this,encodeURIComponent(JSON.stringify(config)));
 return false;"
