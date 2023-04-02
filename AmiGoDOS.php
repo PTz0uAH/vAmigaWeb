@@ -19,8 +19,8 @@ const MODE_MIDI_MONITOR = 1;
 const MODE_AUX_CONSOLE = 2;
 const MODE_MIDI_RUNTIME = 3;
 const MODE_RAW = 4;
-var CURRENT_MODE = MODE_RAW;
-//var CURRENT_MODE = MODE_AUX;
+//var CURRENT_MODE = MODE_RAW;
+var CURRENT_MODE = MODE_AUX_CONSOLE;
 const help = [];
 const user_mode = [];
 user_mode.push(
@@ -47,6 +47,10 @@ if(event.data.msg == 'serial_port_out')
    out_buffer="";
    break;
   }
+  if (out_buffer.includes(": ")==true){
+   term.echo(out_buffer.trim());
+   out_buffer="";
+  }
   if (out_buffer.includes("> ")==true){
    term.set_prompt(out_buffer.trim());
    //term.echo(out_buffer, {newline: false});
@@ -60,7 +64,7 @@ if(event.data.msg == 'serial_port_out')
    }
   }
   break;
- case MODE_MIDI_MONITOR, MODE_RAW:
+ case MODE_MIDI_MONITOR:
   let midi_byte_from_amiga=event.data.value & 0xff ;
   switch ( midi_byte_from_amiga ){
   case 0xF8: break; //filter midiclocks
@@ -77,9 +81,49 @@ if(event.data.msg == 'serial_port_out')
   }
 //  term.echo(performance.now()+": "+ midi_byte_from_amiga.toString(16));
   break;
+ case MODE_RAW:
+  let raw_byte_from_amiga=event.data.value & 0xff ;
+  switch ( raw_byte_from_amiga ){
+  default:
+   count = count +1;
+   if (count<31){
+   term.echo( " 0x"+raw_byte_from_amiga.toString(16).toUpperCase().padStart(2, 0), {newline: false} );
+   }else{
+    term.echo( " 0x"+raw_byte_from_amiga.toString(16).toUpperCase().padStart(2, 0) );
+    count = 0;
+   }
+//   term.echo( "0x"+midi_byte_from_amiga.toString(16).toUpperCase().padStart(2, 0) );
+   break;
+  }
+//  term.echo(performance.now()+": "+ midi_byte_from_amiga.toString(16));
+  break;
  }
 }
 });
+function ADOS_TX_LINE(msg){
+ //get the vAmigaWeb iFrame window
+ let vAmigaWeb_window = document.getElementById("vAmigaWeb").contentWindow;
+ let data = msg;
+ switch (CURRENT_MODE) {
+ case MODE_AUX_CONSOLE:
+  //data that should be written into the serial port needs a $0C or \r
+  data = data + "\r";
+  break;
+ }
+ //send the data to the serial port of vAmigaWeb
+ vAmigaWeb_window.postMessage({cmd:"ser:", text: data}, "*");
+}
+function ADOS_TX_CHAR(msg){
+ // conver msg_key to data_byte
+ //get the vAmigaWeb iFrame window
+ let vAmigaWeb_window = document.getElementById("vAmigaWeb").contentWindow;
+ if (msg == "_BREAK_"){
+  let _BREAK_=0x03;
+  let data = String.fromCharCode(_BREAK_);
+  //send the data to the serial port of vAmigaWeb
+  vAmigaWeb_window.postMessage({cmd:"ser:", text: data}, "*");
+ }
+}
 </script>
 <style>
 .terminal,span,.cmd,div{--background: silver; --color:rgba(45,45,45,0.99); --font: NewTopaz;}
@@ -117,7 +161,19 @@ case 1:
  if (cmd == 'help') { term.echo("Available commands:\n alias, assign, cls, echo, exit, help, loadwb, prompt,\n clear, click, close, engage, logout, mode\n ftp(dummy)"); }
  else if (cmd == 'cls') { term.clear(); term.echo("AmiGoDOS - Developer Shell [" + user_mode[CURRENT_MODE] + "]"); }
  else if (cmd == 'alias'){ term.echo("WIP: make short version of long commands/args"); }
- else if (cmd == 'assign'){ term.echo("WIP: assign i.e. 0xFA midi byte to trigger function in the webpage"); }
+ else if (cmd == 'assign'){
+  switch (CURRENT_MODE){
+  case MODE_MIDI_MONITOR:
+   term.echo("WIP: assign i.e. 0xFA midi byte to trigger function in the webpage");
+   break;
+  case MODE_AUX, MODE_AUX_CONSOLE:
+   ADOS_TX_LINE(cmd);
+   break;
+  default:
+   term.echo(cmd + ': Unknown command for chosen MODE');
+   break;
+  }
+ }
  else if (cmd == 'prompt'){ term.echo("<?php echo "$prompt";?>"); }
  else if (cmd == 'about1'){ term.echo("AmiGoDOS dialect is my amiga-ish syntax flavoured devshell originated in Delphi7 Pascal in 2002..");}
  else if (cmd == 'about2'){ term.echo("tried to keep the AmigaDOS syntax somehow alive.. to get things done on MS side.. even in Amiga GUI style");}
@@ -138,7 +194,9 @@ term.push(
   if (command == 'help') {term.echo('Available FTP (dummy) commands: ping');}
    else if (command == 'ping') {term.echo('pong');}
    else if (command == 'exit') {term.pop();}
- else { term.echo('unknown command ' + command);}
+ else {
+   term.echo('unknown FTP command ' + command);
+  }
  },
  {
    prompt: 'FTP> ',
@@ -146,25 +204,50 @@ term.push(
  }
 );
  }
- else { term.echo( cmd +': Unknown command'); }
+ else {
+  switch (CURRENT_MODE){
+  case MODE_AUX, MODE_AUX_CONSOLE:
+   ADOS_TX_LINE(cmd);
+   //term.echo( cmd +': Unknown command! Type [help] for more info..');
+   break;
+  default:
+   term.echo(cmd + ': Unknown command for chosen MODE');
+   break;
+  }
+//  term.echo( cmd +': Unknown command');
+ }
  break;
 default:
  if (command_arr.length>>1){ command_arr.splice(0,1);}
  if (cmd == 'echo')   { term.echo( command_arr.join(" ") ); }
+ else if (cmd == 'tx'){ ADOS_TX_LINE( command_arr.join(" ") ); }
  else if (cmd == 'click'){ parent.newcli(command_arr[0]); }
- else if (cmd='mode') { CURRENT_MODE=Number(command_arr[0]); term.echo("CURRENT_MODE: " + user_mode[CURRENT_MODE] ); }
+ else if (cmd == 'mode') { CURRENT_MODE=Number(command_arr[0]); term.echo("CURRENT_MODE: " + user_mode[CURRENT_MODE] ); }
  else if (cmd == 'exit'){ parent.location.assign(command_arr[0]); }
- else { term.echo( cmd +': Unknown command! Type [help] for more info..'); }
+ else {
+  switch (CURRENT_MODE){
+  case MODE_AUX, MODE_AUX_CONSOLE:
+   ADOS_TX_LINE(command);
+   //term.echo( cmd +': Unknown command! Type [help] for more info..');
+   break;
+  default:
+   term.echo(command + ': Unknown command for chosen MODE');
+   break;
+  }
+ }
 }
    }
   },
   {
+   keymap: {
+    "CTRL+C": function() {ADOS_TX_CHAR("_BREAK_"); return false; }
+   },
    width: 960,
-   height: 440,
+   height: 320,
    greetings: "AmiGoDOS - Developer Shell [" + user_mode[CURRENT_MODE] + "]",
    prompt: "> ",  // we get the prompt from the amiga aux console
    onBlur: function() { // prevent loosing focus
-return false;
+	return false;
    }
   }
  );
@@ -188,7 +271,7 @@ navbar:false,   //you can also enable this and disable the players toolbar (see 
 wide:true,
 border:20.20,
 port2:false,
-//url:'./adf/serialdebug.zip',
+//url:'https://github.com/PTz0uAH/AmiGoDOS/raw/main/Ahoy!.ADF',
 kickstart_rom_url:'./roms/kick31.rom'
 };
 vAmigaWeb_player.load(this,encodeURIComponent(JSON.stringify(config)));
@@ -196,9 +279,16 @@ return false;"
 />
 </div>
 </div>
-<!--<div  style="display: flex;align-items: right;justify-content: right;">
+<!--
+<div  style="display: flex;align-items: right;justify-content: right;">
 <div id="container3">
-<img style="position: absolute; left:960px; top:0px; width:960px; height:633px; z-index:10" src="../img/C1084.gif" >
+<img style="position: absolute; left:960px; top:0px; width:960px; height:633px; z-index:10" src="../img/C1084.gif"
+ontouchstart="touched=true"
+onclick="
+vAmigaWeb_player.wasm_write_string_to_ser('echo dit is een test\r');
+return false;
+"
+ >
 </div>
 </div>-->
 </body>
